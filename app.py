@@ -1,100 +1,56 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Diabetes Prediction</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f2f7ff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        .container {
-            background: #ffffff;
-            padding: 30px 40px;
-            border-radius: 12px;
-            box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.1);
-            width: 400px;
-        }
-        h2 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 25px;
-        }
-        label {
-            font-weight: bold;
-            display: block;
-            margin-top: 12px;
-        }
-        input[type="text"] {
-            width: 100%;
-            padding: 10px 12px;
-            margin-top: 6px;
-            margin-bottom: 12px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-        }
-        input[type="submit"] {
-            background-color: #007BFF;
-            color: white;
-            padding: 12px;
-            width: 100%;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        input[type="submit"]:hover {
-            background-color: #0056b3;
-        }
-        .result {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 18px;
-            font-weight: bold;
-            color: green;
-        }
-        .error {
-            color: red;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>Diabetes Prediction Form</h2>
-        <form method="post" action="/predict">
-            <label>Number of Pregnancies:</label>
-            <input type="text" name="num_preg" placeholder="e.g., 2" value="{{ form_data.num_preg if form_data else '' }}">
+from flask import Flask, render_template, request
+import numpy as np
+import pickle
 
-            <label>Glucose Concentration:</label>
-            <input type="text" name="glucose_conc" placeholder="e.g., 120" value="{{ form_data.glucose_conc if form_data else '' }}">
+# Load the model, scaler, and imputer
+with open('rf_model.pkl', 'rb') as f:
+   rf_model = pickle.load(f)
 
-            <label>Diastolic Blood Pressure:</label>
-            <input type="text" name="diastolic_bp" placeholder="e.g., 70" value="{{ form_data.diastolic_bp if form_data else '' }}">
+with open('scaler.pkl', 'rb') as f:
+   scaler = pickle.load(f)
 
-            <label>Insulin:</label>
-            <input type="text" name="insulin" placeholder="e.g., 94" value="{{ form_data.insulin if form_data else '' }}">
+with open('imputer.pkl', 'rb') as f:
+   fill_zeros = pickle.load(f)
 
-            <label>BMI:</label>
-            <input type="text" name="bmi" placeholder="e.g., 30.5" value="{{ form_data.bmi if form_data else '' }}">
+app = Flask(__name__)
 
-            <label>Diabetes Pedigree Function:</label>
-            <input type="text" name="diab_pred" placeholder="e.g., 0.372" value="{{ form_data.diab_pred if form_data else '' }}">
+@app.route('/')
+def home():
+   return render_template('index.html')
 
-            <label>Age:</label>
-            <input type="text" name="age" placeholder="e.g., 33" value="{{ form_data.age if form_data else '' }}">
+@app.route('/predict', methods=['POST'])
+def predict():
+   try:
+       # Define input field names
+       field_names = ['num_preg', 'glucose_conc', 'diastolic_bp', 'insulin',
+                      'bmi', 'diab_pred', 'age', 'skin']
 
-            <label>Skin Thickness:</label>
-            <input type="text" name="skin" placeholder="e.g., 20" value="{{ form_data.skin if form_data else '' }}">
 
-            <input type="submit" value="Predict">
-        </form>
+       # Get data from form and keep it in a dictionary
+       form_data = {field: request.form[field] for field in field_names}
 
-        {% if prediction_text %}
-            <div class="result {{ 'error' if 'Error' in prediction_text else '' }}">{{ prediction_text }}</div>
-        {% endif %}
-    </div>
-</body>
-</html>
+
+       # Convert to float list
+       features = [float(form_data[field]) for field in field_names]
+       input_array = np.asarray(features).reshape(1, -1)
+
+
+       # Preprocess
+       input_array = fill_zeros.transform(input_array)
+       input_array = scaler.transform(input_array)
+
+
+       # Predict
+       prediction = rf_model.predict(input_array)
+       result = "Diabetic" if prediction[0] == 1 else "Not Diabetic"
+
+
+       return render_template('index.html', prediction_text=f'Prediction: {result}', form_data=form_data)
+
+
+   except Exception as e:
+       return render_template('index.html', prediction_text=f'Error: {str(e)}')
+if __name__ == "__main__":
+   app.run(debug=True)
+
+# http://127.0.0.1:5000
